@@ -107,9 +107,11 @@ class TimeMaster:
 class Unit:
     def __init__(self, start_time: AetherTime):
         self.life = asyncio.create_task(self.live(start_time))
+        self.interaction = asyncio.create_task(self.interact())
 
     def die(self):
         self.life.cancel()
+        self.interaction.cancel()
 
     def go(self, direction: str):
         ...
@@ -128,6 +130,12 @@ class Unit:
         self.go("left")
         t = await TimeMaster.wait_aether_time(t + AetherDuration(breaths=1))
         self.die()
+
+    async def interact(self):
+        ...
+        other = await InteractionMaster.wait_somebody_approaches(self)
+        other.talk()
+        ...
 
 
 async def main():
