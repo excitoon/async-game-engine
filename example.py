@@ -117,7 +117,7 @@ class Unit:
         ...
 
     async def live(self, start_time: AetherTime):
-        # Time comes here externally for demonstation purposes; however,
+        # Time comes here externally for demonstration purposes; however,
         # in case of Python's `asyncio`, we can obtain it via global object
         # because until we call `await`, time will not advance.
 
