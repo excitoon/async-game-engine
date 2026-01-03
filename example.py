@@ -33,7 +33,7 @@ class AetherTime:
         if isinstance(other, AetherDuration):
             return AetherTime(flickers=self.flickers + other.flickers)
         else:
-            raise TypeError("Unsupported type for addition.")
+            return NotImplemented
 
     def __sub__(self, other: AetherDuration | "AetherTime") -> AetherDuration | "AetherTime":
         if isinstance(other, AetherDuration):
@@ -41,33 +41,43 @@ class AetherTime:
         elif isinstance(other, AetherTime):
             return AetherDuration(flickers=self.flickers - other.flickers)
         else:
-            raise TypeError("Unsupported type for subtraction.")
+            return NotImplemented
 
     def __lt__(self, other: "AetherTime") -> bool:
         if isinstance(other, AetherTime):
             return self.flickers < other.flickers
         else:
-            raise TypeError("Unsupported type for comparison.")
+            return NotImplemented
 
-    def __eq__(self, other: "AetherTime") -> bool:
+    def __eq__(self, other: object) -> bool:
         if isinstance(other, AetherTime):
             return self.flickers == other.flickers
         else:
-            raise TypeError("Unsupported type for comparison.")
+            return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(self.flickers)
 
 
 class TimeMaster:
     time = AetherTime()
-    time_heap = list[AetherTime]()
+    heap = list[AetherTime]()
     events = dict[AetherTime, asyncio.Event]()
+    jobs = dict[AetherTime, int]()
 
     @staticmethod
     async def wait_aether_time(time: AetherTime) -> AetherTime:
-        assert time > TimeMaster.time, "Cannot wait for past time, and for the present time either."
+        assert TimeMaster.time < time, "Cannot wait for past time, and for the present time either."
         if time not in TimeMaster.events:
+            heapq.heappush(TimeMaster.heap, time)
             TimeMaster.events[time] = asyncio.Event()
-            heapq.heappush(TimeMaster.time_heap, time)
-        await TimeMaster.events[time].wait()
+            TimeMaster.jobs[time] = 1
+        else:
+            TimeMaster.jobs[time] += 1
+        try:
+            await TimeMaster.events[time].wait()
+        finally:
+            TimeMaster.jobs[time] -= 1
         return time
 
     @staticmethod
@@ -80,14 +90,17 @@ class TimeMaster:
 
     @staticmethod
     async def advance(duration: AetherDuration) -> None:
-        # It's better to have separate `run` loop.
+        # It's better to have separate `run()` loop.
+        # Also, we assume there is no concurrent calls to `advance()`.
         target_time = TimeMaster.time + duration
-        while TimeMaster.time_heap and TimeMaster.time_heap[0] <= target_time:
-            next_time = heapq.heappop(TimeMaster.time_heap)
-            TimeMaster.time = next_time
-            event = TimeMaster.events.pop(next_time)
+        while TimeMaster.heap and TimeMaster.heap[0] <= target_time:
+            TimeMaster.time = heapq.heappop(TimeMaster.heap)
+            event = TimeMaster.events.pop(TimeMaster.time)
             event.set()
-            await asyncio.sleep(0)
+            while TimeMaster.jobs[TimeMaster.time] > 0:
+                # We use cooperative nature of `asyncio` here.
+                await asyncio.sleep(0)
+            del TimeMaster.jobs[TimeMaster.time]
         TimeMaster.time = target_time
 
 
@@ -103,7 +116,7 @@ class Unit:
 
     async def live(self, start_time: AetherTime):
         # Time comes here externally for demonstation purposes; however,
-        # in case of Python's asyncio, we can obtain it via global object
+        # in case of Python's `asyncio`, we can obtain it via global object
         # because until we call `await`, time will not advance.
 
         t = start_time
@@ -120,8 +133,9 @@ class Unit:
 async def main():
     epoch = AetherTime()
     unit = Unit(epoch)
-    await TimeMaster.wait_aether_time(epoch + AetherDuration(breaths=5))
-
+    for _ in range(5):
+        await TimeMaster.advance(AetherDuration(turns=1))
+        await asyncio.sleep(1)
 
 if __name__ == "__main__":
     asyncio.run(main())
